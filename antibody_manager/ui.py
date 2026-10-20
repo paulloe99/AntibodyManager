@@ -35,6 +35,27 @@ def label(a):
     return ' | '.join(parts)
 
 
+def excel_comment(notes):
+    """Read the imported Comment field, including any continuation lines."""
+    fields = {'target', 'clone', 'conjugate', 'excitation', 'emission', 'reactivity',
+              'host spezies', 'concentration', 'dilution', 'company', 'catalog#',
+              'catalogue number', 'storage', 'position', 'isotype', 'import checks'}
+    comment = []
+    found = False
+    for line in (notes or '').splitlines():
+        key, separator, value = line.partition(':')
+        if separator and key.strip().casefold() == 'comment':
+            if found:
+                break
+            found = True
+            comment.append(value.strip())
+        elif found:
+            if separator and key.strip().casefold() in fields:
+                break
+            comment.append(line.strip())
+    return '\n'.join(comment).strip()
+
+
 def filter_inventory(rows, prefix, fields):
     search = st.text_input('Search name or catalog', key=f'{prefix}_search').casefold().strip()
     result = [a for a in rows if search in ' '.join(str(a[k]) for k in ('name', 'catalog')).casefold()]
@@ -66,6 +87,8 @@ def table(rows, key, target, storage_view=False, multi=True, smart=False, gap=30
                     'Company': a['company'], 'Location': a['location'],
                     'Dilutions': ', '.join(f'{k} 1:{v}' for k, v in a['dilutions'].items()),
                     'Rating / 5': round(a['rating'], 2) if a['rating'] else None})
+        if a['kind'] == 'Primary':
+            row['Comment'] = excel_comment(a.get('notes', ''))
         if storage_view:
             row['Isotype'] = a.get('isotype', '')
             if a['kind'] == 'Secondary':
