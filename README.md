@@ -44,6 +44,19 @@ Secondary matching uses primary host and secondary reactivity only. Confirm appl
 
 ## Persistence and development
 
+### Import the lab Excel inventory
+
+The Histology Antibodies workbook can be imported from a local file or accessible university share:
+
+```powershell
+.\.venv\Scripts\python.exe -m antibody_manager.import_histology "Y:\AG Basic\+Allgemein\#Hohensinner Lab General\#1 Histology Antibodies.xlsx"
+# Add --apply after inspecting the preview to write the database.
+```
+
+The importer is specific to this workbook's headers. It backs up SQLite before applying an additive, transactional import. Repeating an import skips previously imported source sheet/row IDs and does not overwrite app edits. This is an initial migration, not automatic Excel synchronization; inserted/reordered source rows need a new reconciliation before reimporting. Existing demo entries are archived when applying the import.
+
+Storage positions remain separate records. Missing fields are explicitly marked unknown. Original column values, application notes, dilution ranges, concentrations and source row references are retained in notes. Only exact, application-labelled ratio dilutions become calculator suggestions; unlabelled ratios, ranges and concentration-based instructions require manual confirmation. Non-antibody cell mask and a malformed secondary row are excluded and listed in `data/histology_import_report.json`. An entry marked finished is imported as archived.
+
 SQLite stores inventory, reviews and validated image blobs in `data/antibodies.sqlite3`, ignored by Git. Override the location with `ANTIBODY_DB`. Back up the database while the app is stopped; it includes the pictures. Hosted deployments need persistent storage.
 
 ```powershell
