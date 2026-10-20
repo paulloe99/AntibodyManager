@@ -2,9 +2,25 @@
 
 A Streamlit workspace for experiment planning, antibody inventory, and ratings with result pictures.
 
+## Deploy to Streamlit Community Cloud
+
+For the configured Neon project, see [NEON_SETUP.md](NEON_SETUP.md). The app reads
+Neon's `.env.local` automatically; `npm run build` validates the Python app and
+`npm start` launches Streamlit.
+
+See [DEPLOYMENT.md](DEPLOYMENT.md) for hosted PostgreSQL setup, a verified one-time
+migration of the current SQLite inventory/reviews/images, and Streamlit deployment.
+The hosted app stores edits in PostgreSQL so they survive Streamlit restarts.
+Local SQLite is still the default when no cloud database URL is configured.
+For optional OneDrive storage of review pictures, see [ONEDRIVE.md](ONEDRIVE.md).
+New review pictures are limited to 2048 pixels on the longest side and 1 MB each.
+Larger uploads become compressed JPEG review copies, including conversion of
+large 16-bit TIFFs to 8-bit display images. Keep scientific originals separately;
+downloads return the stored copy. Small pictures and existing uploads stay unchanged.
+
 ## Run locally
 
-Requires Python 3.10+. From this repository in PowerShell:
+Requires Python 3.11+ (Python 3.12 recommended for Community Cloud). From this repository in PowerShell:
 
 ```powershell
 python -m venv .venv

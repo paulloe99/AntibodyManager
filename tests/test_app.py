@@ -103,6 +103,7 @@ def test_ratings_primary_and_secondary_tabs(tmp_path, monkeypatch):
     app.sidebar.radio[0].set_value('AB Rating').run()
     assert not app.exception
     assert [tab.label for tab in app.tabs] == ['Primary antibodies', 'Secondary antibodies']
+    assert not app.get('file_uploader')
     primary_choice = app.selectbox(key='ratings_Primary_antibody')
     secondary_choice = app.selectbox(key='ratings_Secondary_antibody')
     assert primary_choice.value['kind'] == 'Primary'
@@ -114,7 +115,44 @@ def test_ratings_primary_and_secondary_tabs(tmp_path, monkeypatch):
     secondary_form.button[0].click().run()
     assert not app.exception
     assert len(store.reviews(secondary['id'])) == 1
+    assert store.reviews(secondary['id'])[0]['images'] == []
     assert app.tabs[1].metric[0].value == '4.00 / 5'
     app.text_input(key='ratings_Primary_search').set_value('No match').run()
     assert not app.exception
     assert app.selectbox(key='ratings_Secondary_antibody').value['id'] == secondary['id']
+
+
+def test_onedrive_picture_outage_keeps_review_visible(tmp_path, monkeypatch):
+    import io
+    from PIL import Image
+    from antibody_manager import ui
+    from tests.test_onedrive import FakePictures
+    monkeypatch.setenv('ANTIBODY_DB', str(tmp_path / 'external_images.db'))
+    files = FakePictures()
+    monkeypatch.setattr(ui, 'onedrive_from_config', lambda _: files)
+    store = Store(image_storage=files)
+    store.seed_demo()
+    antibody_id = store.antibodies()[0]['id']
+    picture = io.BytesIO()
+    Image.new('I;16', (8, 8)).save(picture, format='TIFF')
+    store.add_review(antibody_id, 'tester', 'IF', 5, 'Written review remains visible', [('result.tif', picture.getvalue())])
+    app = logged_in_app()
+    app.sidebar.radio[0].set_value('AB Rating').run()
+    assert not app.exception
+    assert not any('Picture unavailable' in warning.value for warning in app.warning)
+    files.files.clear()
+    app.run()
+    assert not app.exception
+    assert any('Picture unavailable: result.tif' in warning.value for warning in app.warning)
+    assert any('Written review remains visible' in markdown.value for markdown in app.markdown)
+    assert any(button.label == 'Update review' for button in app.button)
+
+
+def test_cloud_deployment_requires_database_settings(tmp_path, monkeypatch):
+    monkeypatch.setenv('ANTIBODY_DB', str(tmp_path / 'local.db'))
+    app = logged_in_app()
+    app.secrets['deployment'] = {'require_cloud_database': True}
+    app.run()
+    assert not app.exception
+    assert any('Configure DATABASE_URL and DATABASE_URL_UNPOOLED' in error.value for error in app.error)
+    assert not app.sidebar.radio

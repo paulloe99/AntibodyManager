@@ -1,6 +1,7 @@
 """Three workflows over a shared inventory."""
 import csv
 import io
+import os
 import pandas as pd
 from PIL import Image
 
@@ -9,6 +10,20 @@ import streamlit as st
 from antibody_manager.domain import compatible, recipe, tokens, selection_conflict
 from antibody_manager.store import Store
 from antibody_manager.auth import require_login
+from antibody_manager.onedrive import from_config as onedrive_from_config
+from antibody_manager.config import database_urls
+
+REVIEW_PICTURE_UPLOADS_ENABLED = False
+
+
+def image_preview(data):
+    """Create a browser-compatible first-frame preview; downloads keep the original."""
+    with Image.open(io.BytesIO(data)) as picture:
+        if picture.mode in ('I', 'F') or picture.mode.startswith('I;16'):
+            low, high = picture.getextrema()
+            if high > low:
+                return picture.convert('F').point(lambda v: (v - low) * 255 / (high - low)).convert('RGB')
+        return picture.convert('RGBA' if picture.mode == 'RGBA' else 'RGB')
 
 
 def label(a):
@@ -290,7 +305,15 @@ def rating_panel(store, inventory, prefix):
         experiment = st.text_input('Experiment / application *')
         score = st.select_slider('Rating', options=[1, 2, 3, 4, 5], value=3, format_func=lambda n: '★' * n + '☆' * (5 - n))
         comment = st.text_area('Results, dilution used, sample and protocol details')
-        images = st.file_uploader('Result pictures (PNG/JPEG/TIFF, max 5, 10 MB each)', type=['png', 'jpg', 'jpeg', 'tif', 'tiff'], accept_multiple_files=True)
+        images = []
+        if REVIEW_PICTURE_UPLOADS_ENABLED:
+            images = st.file_uploader('Result pictures (PNG/JPEG/TIFF, max 5, 10 MB each)', type=['png', 'jpg', 'jpeg', 'tif', 'tiff'], accept_multiple_files=True)
+            st.caption('Pictures are stored at up to 2048 pixels on the longest side and 1 MB each (up to 5 MB per review). '
+                       'Larger pictures become compressed JPEG review copies; small pictures stay unchanged. '
+                       'Keep scientific originals separately: large 16-bit TIFFs become 8-bit display copies. '
+                       'For multi-page TIFFs, export the desired frame before uploading.')
+        else:
+            st.caption('Picture uploads are temporarily disabled. Written reviews and ratings are available.')
         if st.form_submit_button('Publish review'):
             try:
                 store.add_review(a['id'], author, experiment, score, comment, [(f.name, f.getvalue()) for f in images])
@@ -326,8 +349,12 @@ def rating_panel(store, inventory, prefix):
                         except ValueError as exc:
                             st.error(str(exc))
             for image in review['images']:
-                st.image(Image.open(io.BytesIO(image['data'])), caption=image['name'])
-                st.download_button('Download image', image['data'], image['name'], key=f"image_{image['id']}")
+                try:
+                    data = store.image_data(image)
+                    st.image(image_preview(data), caption=f"{image['name']} ({len(data) / 1024:.0f} KB)")
+                    st.download_button('Download image', data, image['name'], key=f"image_{image['id']}")
+                except (ValueError, OSError):
+                    st.warning(f"Picture unavailable: {image['name']}. Please try again later.")
     if not reviews:
         st.info('No reviews yet.')
 
@@ -335,8 +362,22 @@ def rating_panel(store, inventory, prefix):
 def main():
     st.set_page_config(page_title='Antibody Manager', page_icon='🧪', layout='wide')
     require_login()
-    store = Store()
+    database = st.secrets.get('database')
+    try:
+        neon_url, _ = database_urls() if not os.environ.get('ANTIBODY_DB') else (None, None)
+        url = neon_url or (database.get('url', '') if database is not None else None)
+        if st.secrets.get('deployment', {}).get('require_cloud_database', False) and not url:
+            st.error('Configure DATABASE_URL and DATABASE_URL_UNPOOLED in Streamlit Secrets to connect the shared inventory.')
+            st.stop()
+        store = Store(database_url=url,
+                      image_storage=onedrive_from_config(st.secrets.get('onedrive')))
+        store.cleanup_images()
+    except Exception:
+        # Connection exceptions can contain credentials. Keep them out of the page.
+        st.error('Could not initialize storage. Check the database and OneDrive settings and service availability.')
+        st.stop()
     st.sidebar.title('🧪 Antibody Manager')
+    st.sidebar.caption('Shared cloud inventory' if store.database_url else 'Local inventory')
     page = st.sidebar.radio('Workspace', ['Experimental planning', 'Storage overview', 'AB Rating'])
     st.sidebar.caption('Plan experiments · locate inventory · share results')
     if not store.antibodies(True):

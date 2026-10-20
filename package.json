@@ -1,0 +1,13 @@
+{
+  "private": true,
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "start": "node scripts/python.mjs -m streamlit run app.py --server.headless true",
+    "test": "node scripts/python.mjs -m pytest -q -p no:cacheprovider",
+    "test:neon": "node scripts/python.mjs -m antibody_manager.verify_neon"
+  },
+  "dependencies": {
+    "@neon/config": "^1.9.2",
+    "@neon/env": "^1.6.3"
+  }
+}

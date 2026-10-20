@@ -218,6 +218,10 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+.env.local
+.env.*.local
+node_modules/
 
 # Local antibody inventory and result images
 data/
+.neon
